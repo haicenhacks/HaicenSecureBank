@@ -2,7 +2,7 @@ const app = require('express')();
 const { v1: uuid } = require('uuid');
 
 // Constant for simplicity.
-// In a real application, this would be a db. Here we use th
+// In a real application, this would be a db. Here we use a simple dictionary
 const transactions = {};
 const users = {
     admin: {
@@ -29,7 +29,8 @@ function storeTransfer(transferId, fromUser, toUser, amount) {
     transactions[transferId] = {
         fromUser: fromUser,
         toUser: toUser,
-        amount: amount
+        amount: amount,
+        status: "pending"
     }
 }
 
@@ -37,16 +38,28 @@ function getTransfer(transferId) {
     return transactions[transferId];
 }
 
+
 function executeTransfer(transfer) {
     users[transfer.fromUser.name].balance -= transfer.amount;
     users[transfer.toUser.name].balance += transfer.amount;
+    transfer.status = "complete";
     console.log('Completed transfer.');
     console.log(getUser(transfer.fromUser.name));
     console.log(getUser(transfer.toUser.name));
 }
 
 app.get('/', (req, res) => {
-    res.send('If you\'re seeing this, then the lab was set up successfully.')
+    content = "<h1>Secure Bank</h1><br><h2>User account balances</h2><br><ul>"
+
+    for (const u in users) {
+        content += `<li><b>${users[u].name}</b> - Balance: ${users[u].balance}</li>`
+    }
+    content += `</ul>Make transfers with the API. Ex: GET /transfer/haicen/admin/1 <a href="transfer/haicen/admin/1">Click here to send admin $1</a>`
+    if (users['admin'].balance == 0)
+    {
+        content += "<h1>You have solved the lab</h1>"
+    }
+    res.send(content) 
 });
 
 app.get('/transfer/:from/:to/:amount', (req, res) => {
@@ -59,27 +72,44 @@ app.get('/transfer/:from/:to/:amount', (req, res) => {
         storeTransfer(transferId, fromUser, toUser, amount);
         sendConfirmationMail(fromUser, transferId);
     }
-    res.send('Confirmation mail sent');
+    res.send('Confirmation mail sent. <a href="/listTransfers">Click Here</a> to view');
 });
 
 app.get('/listTransfers', (req, res) => {
-    resp = "<h1>Recent transactions</h1><ul>"
+    content = "<h1>Secure Bank</h1><br><h2>User account balances</h2><br><ul>"
+
+    for (const u in users) {
+        content += `<li><b>${users[u].name}</b> - Balance: ${users[u].balance}</li>`
+    }
+
+    content += "</ul><br><h2>Recent transactions</h2><ul>"
     for (const t in transactions) {
         fu = transactions[t].fromUser.name
         tu = transactions[t].toUser.name
         amt = transactions[t].amount
         conf = t
-        console.log(fu, tu)
+        console.log(transactions[t].status);
+        
         if (fu != 'admin'){
-            resp = resp + `<li>From ${fu} to ${tu} $${amt} (conf: ${conf})</li>`
+            if (transactions[t].status == "pending"){
+                content += `<li><i>(pending) From ${fu} to ${tu} $${amt}  <a href="/confirmTransfer/${conf}">Confirm</a></i></li>`
+            }
+            else {
+                content += `<li>From ${fu} to ${tu} ${amt}</li>`
+            }
         }
         else {
-            resp = resp + `<li>From ${fu} to ${tu} $${amt} (conf: REDACTED)</li>`
+            if (transactions[t].status == "pending"){
+                content += `<li><i>(pending) From ${fu} to ${tu} $${amt} (conf: REDACTED)</i></li>`
+            }
+            else {
+                content += `<li>From ${fu} to ${tu} $${amt} (conf: REDACTED)</li>`
+            }
         }
     }
-    resp = resp + "</ul>"
+    content += "</ul>"
     
-    res.send(resp) 
+    res.send(content) 
 });
 
 app.get('/confirmTransfer/:id', (req, res) => {
